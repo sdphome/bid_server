@@ -1,16 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# author:  Hua Liang [ Stupid ET ]
-# email:   et@everet.org
-# website: http://EverET.org
-#
 
 # Rule Of Optimization: Prototype before polishing. Get it
 #                       working before you optimize it.
-
-import socket, os, threading, sys, signal, stat
+import select, socket, os, threading, sys, signal, stat
 import time, struct, re, traceback
-import pprint
+
 from collections import defaultdict
 
 host = '127.0.0.1'
@@ -76,6 +71,7 @@ class Connection(object):
         self.sockfd = sockfd
         self.remote_ip = remote_ip
         self.keepalive = False
+        self.thread = False
 
         self.reset()
 
@@ -85,6 +81,7 @@ class Connection(object):
         self.http_status = -1
         self.request = None
         self.response = None
+        self.thread = True
         self.environment = {}
         print("connection reset")
 
@@ -102,16 +99,47 @@ class MultiThreadServer(object):
         self.listenfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listenfd.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.listenfd.bind((host, port))
-        self.listenfd.listen(20)
+        self.listenfd.listen(30)
 
     def serve_forver(self):
+        again = 0
+        inputs = [self.listenfd]
         while True:
             print("Enter serve_forver##############################################################")
-            clientfd, clientaddr = self.listenfd.accept()
-            print clientfd, clientaddr
-            # timeout for 5 seconds
-            #clientfd.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO,
-            #                    struct.pack('ll', timeout, 0))
+            #READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
+            #READ_WRITE = (READ_ONLY | select.POLLOUT)
+            #poller = select.poll()
+            #poller.register(self.listenfd)
+
+            #events = poller.poll(20)
+            #for  fd ,flag in events:
+            #    if flag & (select.POLLIN | select.POLLPRI):
+            #        clientfd, clientaddr = self.listenfd.accept()
+            #        print " Connection ", clientfd, clientaddr
+            #    elif flag & select.POLLERR:
+            #        print " ******exception on " , s.getpeername()
+            #        poller.unregister(s)
+            #        s.close()
+            #        return
+            #    else:
+            #        again = 1
+
+            #if again == 1:
+            #    again = 0
+            #    continue
+
+            try:
+                rs, ws, es = select.select(inputs, [], [])
+                print("out select")
+            except:
+                print("select exception.")
+                self.listenfd.close()
+                return
+
+            for r in rs:
+                if r is self.listenfd:
+                    clientfd, clientaddr = self.listenfd.accept()
+                    print " Connection ", clientfd, clientaddr
 
             # select, fork or multithread
             conn = Connection(clientfd, clientaddr[0]) 
@@ -130,7 +158,6 @@ def get_header(buf):
 def read_request(conn):
     print '**[read_request]**'
     print("****************************************************")
-    #time.sleep(6)
     data = conn.sockfd.recv(4096)
     print(data)
     print("****************************************************")
@@ -146,8 +173,8 @@ def read_request(conn):
         weWant = int(request.content_length)
         weHad = len(data) - header_end_pos
 
-        print 'weWant', weWant
-        print 'weHad', weHad
+        #print 'weWant', weWant
+        #print 'weHad', weHad
 
         to_read = weWant - weHad
 
@@ -161,8 +188,8 @@ def read_request(conn):
 
     conn.request = request
 
-    conn.keepalive = True if \
-        request.headers.get('Connection', [''])[0].lower() == 'keep-alive' else False
+    #conn.keepalive = True if \
+    #    request.headers.get('Connection', [''])[0].lower() == 'keep-alive' else False
 
 def handle_request(conn):
     print '**[handle_request]**'
@@ -242,6 +269,7 @@ def response_request(conn):
     send_data += header_text
     if conn.response.response_type != Response.RESPONSE_UPDATE:
         send_data += str(hex(conn.response.content_length))[2:-1]
+
     send_data += '\r\n'
     while True:
         # UTF-8 encode
