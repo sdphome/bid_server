@@ -161,6 +161,8 @@ def read_request(conn):
     data = conn.sockfd.recv(4096)
     print(data)
     print("****************************************************")
+    if data == '':
+        return
     header, header_end_pos = get_header(data)
     #print(header)
     #print("-------------")
@@ -192,6 +194,8 @@ def read_request(conn):
     #    request.headers.get('Connection', [''])[0].lower() == 'keep-alive' else False
 
 def handle_request(conn):
+    if conn.request == None:
+        return
     print '**[handle_request]**'
     filename = os.path.normpath(DOCUMENT_ROOT + conn.request.uri)
     print filename
@@ -200,7 +204,7 @@ def handle_request(conn):
     response.headers['Server'].append('Apache-Coyote/1.1')
 
     file_status = os.stat(filename)
-    print(file_status)
+    #print(file_status)
     # ok, it's a normal static file
     # privilege
     try:
@@ -248,6 +252,8 @@ def handle_request(conn):
     conn.response = response
 
 def response_request(conn):
+    if conn.response == None:
+        return
     print '**[response_request]**'
     r = conn.response
 
